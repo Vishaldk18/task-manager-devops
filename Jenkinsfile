@@ -1,0 +1,52 @@
+pipeline {
+  agent any
+
+  environment {
+    DOCKER_IMAGE = "vishaldk18/task-api"
+  }
+
+  stages {
+
+    stage('Clone Repo') {
+      steps {
+        git "https://github.com/Vishaldk18/task-manager-devops.git"
+      }
+    }
+
+    stage('Build Docker Image') {
+      steps {
+        sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} app/"
+      }
+    }
+
+    stage('Push Image') {
+      steps {
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'dockerhub',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+          )
+        ]) {
+          sh """
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
+          """
+        }
+      }
+    }
+
+    stage('Deploy to Kubernetes') {
+      steps {
+        withCredentials([string(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+          sh """
+            export KUBECONFIG=$KUBECONFIG
+            kubectl set image deployment/task-api task-api=${DOCKER_IMAGE}:${BUILD_NUMBER}
+            kubectl rollout status deployment/task-api
+          """
+        }
+      }
+    }
+
+  }
+}
